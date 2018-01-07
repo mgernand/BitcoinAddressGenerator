@@ -6,6 +6,9 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BitcoinAddressGenerator.Console", "BitcoinAddressGenerator.Console\BitcoinAddressGenerator.Console.csproj", "{2B959412-17AE-449C-974E-6453048EF3EE}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".items", ".items", "{7C19A982-0ED1-4208-8A18-BC76F06E9244}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitcoinAddressGenerator.Core", "BitcoinAddressGenerator.Core\BitcoinAddressGenerator.Core.csproj", "{DE578680-649F-4D4D-970E-930EA46BDA88}"
 EndProject

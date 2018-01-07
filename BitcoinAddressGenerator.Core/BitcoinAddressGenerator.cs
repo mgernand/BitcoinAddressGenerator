@@ -14,6 +14,9 @@
 	using Org.BouncyCastle.Security;
 	using ECPoint = Org.BouncyCastle.Math.EC.ECPoint;
 
+	/// <summary>
+	/// Credit: https://bitcointalk.org/index.php?topic=25141.0
+	/// </summary>
 	[PublicAPI]
 	public class BitcoinAddressGenerator
 	{
