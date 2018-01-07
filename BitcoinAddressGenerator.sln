@@ -9,6 +9,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".items", ".items", "{7C19A9
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitcoinAddressGenerator.Core", "BitcoinAddressGenerator.Core\BitcoinAddressGenerator.Core.csproj", "{DE578680-649F-4D4D-970E-930EA46BDA88}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitcoinAddressGenerator", "BitcoinAddressGenerator\BitcoinAddressGenerator.csproj", "{B38212FB-6AFA-4837-A0C3-01F6315B13BF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,6 +25,10 @@ Global
 		{DE578680-649F-4D4D-970E-930EA46BDA88}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DE578680-649F-4D4D-970E-930EA46BDA88}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DE578680-649F-4D4D-970E-930EA46BDA88}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B38212FB-6AFA-4837-A0C3-01F6315B13BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B38212FB-6AFA-4837-A0C3-01F6315B13BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B38212FB-6AFA-4837-A0C3-01F6315B13BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B38212FB-6AFA-4837-A0C3-01F6315B13BF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

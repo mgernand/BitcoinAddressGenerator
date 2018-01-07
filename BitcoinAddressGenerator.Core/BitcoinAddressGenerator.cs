@@ -2,6 +2,7 @@
 {
 	using System;
 	using System.Collections.Generic;
+	using System.Linq;
 	using System.Security.Cryptography;
 	using JetBrains.Annotations;
 	using Org.BouncyCastle.Asn1.Sec;
@@ -18,11 +19,11 @@
 	{
 		public AddressInfo GenerateAddress(CoinType coinType)
 		{
-			string privateKeyHex = GenerateKey();
-			string privateKeyWif = PrivateKeyHexToWif(privateKeyHex);
-			string publicKeyHex = PrivateKeyHexToPublicKeyHex(privateKeyHex);
-			string publicKeyHash = PublicKeyHexToPublicKeyHash(publicKeyHex);
-			string address = PublicKeyHashToAddress(publicKeyHash, coinType);
+			string privateKeyHex = this.GenerateKey();
+			string privateKeyWif = this.PrivateKeyHexToWif(privateKeyHex);
+			string publicKeyHex = this.PrivateKeyHexToPublicKeyHex(privateKeyHex);
+			string publicKeyHash = this.PublicKeyHexToPublicKeyHash(publicKeyHex);
+			string address = this.PublicKeyHashToAddress(publicKeyHash, coinType);
 
 			return new AddressInfo
 			{
@@ -35,84 +36,96 @@
 			};
 		}
 
-		public static string GenerateKey()
+		private string GenerateKey()
 		{
 			ECKeyPairGenerator gen = new ECKeyPairGenerator();
 			SecureRandom secureRandom = new SecureRandom();
-			X9ECParameters ps = SecNamedCurves.GetByName("secp256k1");
-			ECDomainParameters ecParams = new ECDomainParameters(ps.Curve, ps.G, ps.N, ps.H);
-			ECKeyGenerationParameters keyGenParam = new ECKeyGenerationParameters(ecParams, secureRandom);
-			gen.Init(keyGenParam);
+			X9ECParameters curve = SecNamedCurves.GetByName("secp256k1");
+			ECDomainParameters domainParameters = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H);
+			ECKeyGenerationParameters keyGenerationParameters = new ECKeyGenerationParameters(domainParameters, secureRandom);
+			gen.Init(keyGenerationParameters);
 
-			AsymmetricCipherKeyPair kp = gen.GenerateKeyPair();
+			AsymmetricCipherKeyPair keyPair = gen.GenerateKeyPair();
 
-			ECPrivateKeyParameters priv = (ECPrivateKeyParameters)kp.Private;
+			ECPrivateKeyParameters privateKeyParameters = (ECPrivateKeyParameters)keyPair.Private;
 
-			byte[] hexpriv = priv.D.ToByteArrayUnsigned();
-			return ByteArrayToString(hexpriv);
+			byte[] privateKeyBytes = privateKeyParameters.D.ToByteArrayUnsigned();
+			return this.ByteArrayToString(privateKeyBytes);
 		}
 
-		public static string PrivateKeyHexToWif(string privateHexKey)
+		private string PrivateKeyHexToWif(string privateHexKey)
 		{
-			byte[] hex = ValidateAndGetHexPrivateKey(privateHexKey, 0x80);
-			if (hex == null) return null;
+			byte[] privateKeyBytes = this.ValidateAndGetPrivateKeyBytes(privateHexKey, 0x80);
+			if (privateKeyBytes == null)
+			{
+				return null;
+			}
 
-			return ByteArrayToBase58Check(hex);
+			return this.ByteArrayToBase58Check(privateKeyBytes);
 		}
 
-		public static string PrivateKeyHexToPublicKeyHex(string privateKeyHex)
+		private string PrivateKeyHexToPublicKeyHex(string privateKeyHex)
 		{
-			byte[] hex = ValidateAndGetHexPrivateKey(privateKeyHex, 0x00);
-			if (hex == null) return null;
-			X9ECParameters ps = SecNamedCurves.GetByName("secp256k1");
-			BigInteger Db = new BigInteger(hex);
-			ECPoint dd = ps.G.Multiply(Db);
+			byte[] privateKeyBytes = this.ValidateAndGetPrivateKeyBytes(privateKeyHex, 0x00);
+			if (privateKeyBytes == null)
+			{
+				return null;
+			}
 
-			byte[] pubaddr = new byte[65];
-			byte[] Y = dd.Y.ToBigInteger().ToByteArray();
-			Array.Copy(Y, 0, pubaddr, 64 - Y.Length + 1, Y.Length);
-			byte[] X = dd.X.ToBigInteger().ToByteArray();
-			Array.Copy(X, 0, pubaddr, 32 - X.Length + 1, X.Length);
-			pubaddr[0] = 4;
+			X9ECParameters curves = SecNamedCurves.GetByName("secp256k1");
+			BigInteger privateKeyInteger = new BigInteger(privateKeyBytes);
+			ECPoint p = curves.G.Multiply(privateKeyInteger);
 
-			return ByteArrayToString(pubaddr);
+			byte[] publicAddress = new byte[65];
+			byte[] y = p.Normalize().YCoord.ToBigInteger().ToByteArray();
+			Array.Copy(y, 0, publicAddress, 64 - y.Length + 1, y.Length);
+			byte[] x = p.Normalize().XCoord.ToBigInteger().ToByteArray();
+			Array.Copy(x, 0, publicAddress, 32 - x.Length + 1, x.Length);
+			publicAddress[0] = 4;
+
+			return this.ByteArrayToString(publicAddress);
 		}
 
-		public static string PublicKeyHexToPublicKeyHash(string publicKeyHex)
+		private string PublicKeyHexToPublicKeyHash(string publicKeyHex)
 		{
-			byte[] hex = ValidateAndGetHexPublicKey(publicKeyHex);
-			if (hex == null) return null;
+			byte[] publicKeyBytes = this.ValidateAndGetPublicKeyBytes(publicKeyHex);
+			if (publicKeyBytes == null)
+			{
+				return null;
+			}
 
 			SHA256CryptoServiceProvider sha256 = new SHA256CryptoServiceProvider();
-			byte[] shaofpubkey = sha256.ComputeHash(hex);
+			byte[] publicKeySha = sha256.ComputeHash(publicKeyBytes);
 
-			// https://github.com/darrenstarr/RIPEMD160.net
+			// Credit: https://github.com/darrenstarr/RIPEMD160.net
 			RIPEMD160 rip = RIPEMD160.Create();
-			byte[] ripofpubkey = rip.ComputeHash(shaofpubkey);
+			byte[] publicKeyShaRip = rip.ComputeHash(publicKeySha);
 
-			return ByteArrayToString(ripofpubkey);
+			return this.ByteArrayToString(publicKeyShaRip);
 		}
 
-		public static string PublicKeyHashToAddress(string publicKeyHash, CoinType coinType)
+		private string PublicKeyHashToAddress(string publicKeyHash, CoinType coinType)
 		{
-			byte[] hex = ValidateAndGetHexPublicHash(publicKeyHash);
-			if (hex == null) return null;
-
-			byte[] hex2 = new byte[21];
-			Array.Copy(hex, 0, hex2, 1, 20);
-
-			int cointype = (int) coinType;
-			hex2[0] = (byte)(cointype & 0xff);
-			return ByteArrayToBase58Check(hex2);
-		}
-
-		public static string AddressToPublicKeyHash(string address)
-		{
-			byte[] hex = Base58ToByteArray(address);
-			if (hex == null || hex.Length != 21)
+			byte[] publicKeyBytes = this.ValidateAndGetHexPublicHash(publicKeyHash);
+			if (publicKeyBytes == null)
 			{
-				int L = address.Length;
-				if (L >= 33 && L <= 34)
+				return null;
+			}
+
+			byte[] aux = new byte[21];
+			Array.Copy(publicKeyBytes, 0, aux, 1, 20);
+
+			aux[0] = (byte)((int)coinType & 0xff);
+			return this.ByteArrayToBase58Check(aux);
+		}
+
+		private string AddressToPublicKeyHash(string address)
+		{
+			byte[] base58Bytes = this.Base58ToByteArray(address);
+			if (base58Bytes == null || base58Bytes.Length != 21)
+			{
+				int l = address.Length;
+				if (l >= 33 && l <= 34)
 				{
 					Console.Error.WriteLine("Address is not valid.");
 				}
@@ -123,78 +136,87 @@
 				return null;
 			}
 
-			return ByteArrayToString(hex, 1, 20);
+			return this.ByteArrayToString(base58Bytes, 1, 20);
 		}
 
-		private static string ByteArrayToString(byte[] ba)
+		private string ByteArrayToString(byte[] bytes)
 		{
-			return ByteArrayToString(ba, 0, ba.Length);
+			return this.ByteArrayToString(bytes, 0, bytes.Length);
 		}
 
-		private static string ByteArrayToString(byte[] ba, int offset, int count)
+		private string ByteArrayToString(byte[] bytes, int offset, int count)
 		{
-			string rv = "";
-			int usedcount = 0;
-			for (int i = offset; usedcount < count; i++, usedcount++)
+			string result = "";
+
+			int usedCount = 0;
+			for (int i = offset; usedCount < count; i++, usedCount++)
 			{
-				rv += string.Format("{0:x2}", ba[i]);
+				result += string.Format("{0:x2}", bytes[i]);
 			}
-			return rv;
+
+			return result;
 		}
 
-		private static string ByteArrayToBase58Check(byte[] ba)
+		private string ByteArrayToBase58Check(byte[] bytes)
 		{
+			byte[] aux = new byte[bytes.Length + 4];
+			Array.Copy(bytes, aux, bytes.Length);
 
-			byte[] bb = new byte[ba.Length + 4];
-			Array.Copy(ba, bb, ba.Length);
 			SHA256CryptoServiceProvider sha256 = new SHA256CryptoServiceProvider();
-			byte[] thehash = sha256.ComputeHash(ba);
-			thehash = sha256.ComputeHash(thehash);
-			for (int i = 0; i < 4; i++) bb[ba.Length + i] = thehash[i];
-			return ByteArrayToBase58(bb);
+			byte[] hashBytes = sha256.ComputeHash(bytes);
+			hashBytes = sha256.ComputeHash(hashBytes);
+
+			for (int i = 0; i < 4; i++)
+			{
+				aux[bytes.Length + i] = hashBytes[i];
+			}
+
+			return this.ByteArrayToBase58(aux);
 		}
 
-		private static string ByteArrayToBase58(byte[] ba)
+		private string ByteArrayToBase58(byte[] bytes)
 		{
-			BigInteger addrremain = new BigInteger(1, ba);
+			BigInteger addRemainInteger = new BigInteger(1, bytes);
 
-			BigInteger big0 = new BigInteger("0");
 			BigInteger big58 = new BigInteger("58");
 
-			string b58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+			const string allowedChars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-			string rv = "";
+			string result = "";
 
-			while (addrremain.CompareTo(big0) > 0)
+			while (addRemainInteger.CompareTo(BigInteger.Zero) > 0)
 			{
-				int d = Convert.ToInt32(addrremain.Mod(big58).ToString());
-				addrremain = addrremain.Divide(big58);
-				rv = b58.Substring(d, 1) + rv;
+				int d = Convert.ToInt32(addRemainInteger.Mod(big58).ToString());
+				addRemainInteger = addRemainInteger.Divide(big58);
+				result = allowedChars.Substring(d, 1) + result;
 			}
 
-			// handle leading zeroes
-			foreach (byte b in ba)
+			// Handle leading zeroes.
+			foreach (byte b in bytes)
 			{
-				if (b != 0) break;
-				rv = "1" + rv;
-
+				if (b != 0)
+				{
+					break;
+				}
+				result = "1" + result;
 			}
-			return rv;
+
+			return result;
 		}
 
-		private static byte[] Base58ToByteArray(string base58)
+		private byte[] Base58ToByteArray(string base58)
 		{
-			BigInteger bi2 = new BigInteger("0");
-			string b58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+			BigInteger aux = new BigInteger("0");
+			string allowedChars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 			bool ignoreChecksum = false;
 
 			foreach (char c in base58)
 			{
-				if (b58.IndexOf(c) != -1)
+				if (allowedChars.IndexOf(c) != -1)
 				{
-					bi2 = bi2.Multiply(new BigInteger("58"));
-					bi2 = bi2.Add(new BigInteger(b58.IndexOf(c).ToString()));
+					aux = aux.Multiply(new BigInteger("58"));
+					aux = aux.Add(new BigInteger(allowedChars.IndexOf(c).ToString()));
 				}
 				else if (c == '?')
 				{
@@ -206,51 +228,61 @@
 				}
 			}
 
-			byte[] bb = bi2.ToByteArrayUnsigned();
+			byte[] auxBytes = aux.ToByteArrayUnsigned();
 
-			// interpret leading '1's as leading zero bytes
+			// iInterpret leading '1's as leading zero bytes.
 			foreach (char c in base58)
 			{
-				if (c != '1') break;
-				byte[] bbb = new byte[bb.Length + 1];
-				Array.Copy(bb, 0, bbb, 1, bb.Length);
-				bb = bbb;
+				if (c != '1')
+				{
+					break;
+				}
+
+				byte[] bytes = new byte[auxBytes.Length + 1];
+				Array.Copy(auxBytes, 0, bytes, 1, auxBytes.Length);
+				auxBytes = bytes;
 			}
 
-			if (bb.Length < 4) return null;
+			if (auxBytes.Length < 4)
+			{
+				return null;
+			}
 
 			if (ignoreChecksum == false)
 			{
 				SHA256CryptoServiceProvider sha256 = new SHA256CryptoServiceProvider();
-				byte[] checksum = sha256.ComputeHash(bb, 0, bb.Length - 4);
+				byte[] checksum = sha256.ComputeHash(auxBytes, 0, auxBytes.Length - 4);
 				checksum = sha256.ComputeHash(checksum);
 				for (int i = 0; i < 4; i++)
 				{
-					if (checksum[i] != bb[bb.Length - 4 + i]) return null;
+					if (checksum[i] != auxBytes[auxBytes.Length - 4 + i])
+					{
+						return null;
+					}
 				}
 			}
 
-			byte[] rv = new byte[bb.Length - 4];
-			Array.Copy(bb, 0, rv, 0, bb.Length - 4);
-			return rv;
+			byte[] result = new byte[auxBytes.Length - 4];
+			Array.Copy(auxBytes, 0, result, 0, auxBytes.Length - 4);
+			return result;
 		}
 
-		private static byte[] ValidateAndGetHexPrivateKey(string privateKeyHex, byte leadingbyte)
+		private byte[] ValidateAndGetPrivateKeyBytes(string privateKeyHex, byte leadingByte)
 		{
-			byte[] hex = GetHexBytes(privateKeyHex, 32);
+			byte[] privateKeyBytes = this.GetHexStringBytes(privateKeyHex, 32);
 
-			if (hex == null || hex.Length < 32 || hex.Length > 33)
+			if (privateKeyBytes == null || privateKeyBytes.Length < 32 || privateKeyBytes.Length > 33)
 			{
 				Console.Error.WriteLine("Hex is not 32 or 33 bytes.");
 				return null;
 			}
 
-			// if leading 00, change it to 0x80
-			if (hex.Length == 33)
+			// If leading 00, change it to 0x80.
+			if (privateKeyBytes.Length == 33)
 			{
-				if (hex[0] == 0 || hex[0] == 0x80)
+				if (privateKeyBytes[0] == 0 || privateKeyBytes[0] == 0x80)
 				{
-					hex[0] = 0x80;
+					privateKeyBytes[0] = 0x80;
 				}
 				else
 				{
@@ -259,36 +291,36 @@
 				}
 			}
 
-			// add 0x80 byte if not present
-			if (hex.Length == 32)
+			// Add 0x80 byte if not present.
+			if (privateKeyBytes.Length == 32)
 			{
-				byte[] hex2 = new byte[33];
-				Array.Copy(hex, 0, hex2, 1, 32);
-				hex2[0] = 0x80;
-				hex = hex2;
+				byte[] bytes = new byte[33];
+				Array.Copy(privateKeyBytes, 0, bytes, 1, 32);
+				bytes[0] = 0x80;
+				privateKeyBytes = bytes;
 			}
 
-			hex[0] = leadingbyte;
-			return hex;
+			privateKeyBytes[0] = leadingByte;
+			return privateKeyBytes;
 
 		}
 
-		private static byte[] ValidateAndGetHexPublicKey(string publicKeyHex)
+		private byte[] ValidateAndGetPublicKeyBytes(string publicKeyHex)
 		{
-			byte[] hex = GetHexBytes(publicKeyHex, 64);
+			byte[] publicKeyBytes = this.GetHexStringBytes(publicKeyHex, 64);
 
-			if (hex == null || hex.Length < 64 || hex.Length > 65)
+			if (publicKeyBytes == null || publicKeyBytes.Length < 64 || publicKeyBytes.Length > 65)
 			{
 				Console.Error.WriteLine("Hex is not 64 or 65 bytes.");
 				return null;
 			}
 
-			// if leading 00, change it to 0x80
-			if (hex.Length == 65)
+			// If leading 00, change it to 0x80.
+			if (publicKeyBytes.Length == 65)
 			{
-				if (hex[0] == 0 || hex[0] == 4)
+				if (publicKeyBytes[0] == 0 || publicKeyBytes[0] == 4)
 				{
-					hex[0] = 4;
+					publicKeyBytes[0] = 4;
 				}
 				else
 				{
@@ -297,98 +329,108 @@
 				}
 			}
 
-			// add 0x80 byte if not present
-			if (hex.Length == 64)
+			// Add 0x80 byte if not present.
+			if (publicKeyBytes.Length == 64)
 			{
-				byte[] hex2 = new byte[65];
-				Array.Copy(hex, 0, hex2, 1, 64);
-				hex2[0] = 4;
-				hex = hex2;
+				byte[] bytes = new byte[65];
+				Array.Copy(publicKeyBytes, 0, bytes, 1, 64);
+				bytes[0] = 4;
+				publicKeyBytes = bytes;
 			}
-			return hex;
+
+			return publicKeyBytes;
 		}
 
-		private static byte[] ValidateAndGetHexPublicHash(string publicKeyHash)
+		private byte[] ValidateAndGetHexPublicHash(string publicKeyHash)
 		{
-			byte[] hex = GetHexBytes(publicKeyHash, 20);
+			byte[] publicKeyHashBytes = this.GetHexStringBytes(publicKeyHash, 20);
 
-			if (hex == null || hex.Length != 20)
+			if (publicKeyHashBytes == null || publicKeyHashBytes.Length != 20)
 			{
 				Console.Error.WriteLine("Hex is not 20 bytes.");
 				return null;
 			}
-			return hex;
+
+			return publicKeyHashBytes;
 		}
 
-		private static byte[] GetHexBytes(string source, int minimum)
+		private byte[] GetHexStringBytes(string hexString, int minimum)
 		{
-			byte[] hex = GetHexBytes(source);
-			if (hex == null) return null;
-			// assume leading zeroes if we're short a few bytes
-			if (hex.Length > (minimum - 6) && hex.Length < minimum)
+			byte[] bytes = this.GetHexStringBytes(hexString);
+			if (bytes == null)
 			{
-				byte[] hex2 = new byte[minimum];
-				Array.Copy(hex, 0, hex2, minimum - hex.Length, hex.Length);
-				hex = hex2;
+				return null;
 			}
-			// clip off one overhanging leading zero if present
-			if (hex.Length == minimum + 1 && hex[0] == 0)
+
+			// Assume leading zeroes if we're short a few bytes.
+			if (bytes.Length > minimum - 6 && bytes.Length < minimum)
 			{
 				byte[] hex2 = new byte[minimum];
-				Array.Copy(hex, 1, hex2, 0, minimum);
-				hex = hex2;
+				Array.Copy(bytes, 0, hex2, minimum - bytes.Length, bytes.Length);
+				bytes = hex2;
+			}
+			// Clip off one overhanging leading zero if present.
+			if (bytes.Length == minimum + 1 && bytes[0] == 0)
+			{
+				byte[] auxBytes = new byte[minimum];
+				Array.Copy(bytes, 1, auxBytes, 0, minimum);
+				bytes = auxBytes;
 
 			}
 
-			return hex;
+			return bytes;
 		}
 
-		private static byte[] GetHexBytes(string source)
+		private byte[] GetHexStringBytes(string hexString)
 		{
-			List<byte> bytes = new List<byte>();
-			// copy s into ss, adding spaces between each byte
-			string s = source;
-			string ss = "";
-			int currentbytelength = 0;
-			foreach (char c in s.ToCharArray())
+			IList<byte> bytes = new List<byte>();
+
+			// Copy hexString into hexStringWithSpaces, adding spaces between each byte.
+			string hexStringWithSpaces = "";
+			int currentByteLength = 0;
+			foreach (char c in hexString)
 			{
 				if (c == ' ')
 				{
-					currentbytelength = 0;
+					currentByteLength = 0;
 				}
 				else
 				{
-					currentbytelength++;
-					if (currentbytelength == 3)
+					currentByteLength++;
+					if (currentByteLength == 3)
 					{
-						currentbytelength = 1;
-						ss += ' ';
+						currentByteLength = 1;
+						hexStringWithSpaces += ' ';
 					}
 				}
-				ss += c;
+				hexStringWithSpaces += c;
 			}
 
-			foreach (string b in ss.Split(' '))
+			foreach (string str in hexStringWithSpaces.Split(' '))
 			{
 				int v = 0;
-				if (b.Trim() == "") continue;
-				foreach (char c in b.ToCharArray())
+				if (str.Trim() == "")
+				{
+					continue;
+				}
+
+				foreach (char c in str)
 				{
 					if (c >= '0' && c <= '9')
 					{
 						v *= 16;
-						v += (c - '0');
+						v += c - '0';
 
 					}
 					else if (c >= 'a' && c <= 'f')
 					{
 						v *= 16;
-						v += (c - 'a' + 10);
+						v += c - 'a' + 10;
 					}
 					else if (c >= 'A' && c <= 'F')
 					{
 						v *= 16;
-						v += (c - 'A' + 10);
+						v += c - 'A' + 10;
 					}
 
 				}

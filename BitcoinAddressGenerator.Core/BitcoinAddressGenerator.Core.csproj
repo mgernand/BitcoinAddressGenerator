@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <Company>Fluxera Software Development GmbH</Company>
+    <Authors>Matthias Gernand</Authors>
+    <Product>BitcoinAddressGenerator</Product>
   </PropertyGroup>
 
   <ItemGroup>
